@@ -1,6 +1,10 @@
 using UnityEngine;
 using System.Collections;
 /*
+CONTENT :
+	- shoots on function call. 
+	- Can be used with buttons, key presses.
+
 1. Store in a list all enemies with Enemy tag 
 2. Take the nearest enemy in the list
 3. Checks if nearest enemy is in range
@@ -10,45 +14,58 @@ public class executionnerAttack : MonoBehaviour {
 
 	private Transform target;
 	private Enemy targetEnemy;
+	GameObject nearestEnemy;
 
 	[Header("General")]
-
 	public float range = 15f;
+	public string keyForAttack;
 
-	[Header("Use Bullets (default)")]
+	[Header("Use Bullets")]
 	public GameObject bulletPrefab;
-	public float fireRate = 1f;
-	private float fireCountdown = 0f;
+	public float fireRate;
+	public float fireCountdown;
 
 	[Header("Use Laser")]
-	public bool useLaser = false;
+	public bool useLaser;
 
 	public int damageOverTime = 30;
-	public float slowAmount = .5f;
 
 	public LineRenderer lineRenderer;
-	public ParticleSystem impactEffect;
 	public Light impactLight;
+	public GameObject impactEffect;
 
 	[Header("Unity Setup Fields")]
 
 	public string enemyTag = "Enemy";
 
-	public Transform partToRotate;
-	public float turnSpeed = 10f;
+	[Header("Optional : specific firePoint (see script)")]
+	public Transform firePoint; // optional, gives the possibility to have a specific firePoint. If no firePoint is defined, it will by default fire from the script's holder transform
 
-	public Transform firePoint;
+	bool buttonPressed;
+	bool usingFireRate = true; // the script will do fireRate operations even if fireRate = 0, making the shooting system glitchy. This avoid making these operations and making it working if there's no fireRate.
 
-	// Use this for initialization
-	void Start () {
-		InvokeRepeating("UpdateTarget", 0f, 0.5f);
+	public void Start()
+	{
+		if(fireRate == 0)
+		{
+			usingFireRate = false;
+		}		
+	}
+
+	public void ButtonPressAttack() 
+	{
+		fireCountdown = fireRate;
+		UpdateTarget();
+		buttonPressed = true;
 	}
 	
 	void UpdateTarget ()
 	{
-		GameObject[] enemies = GameObject.FindGameObjectsWithTag(enemyTag);
+		firePoint = this.transform;
 		float shortestDistance = Mathf.Infinity;
-		GameObject nearestEnemy = null;
+
+		GameObject[] enemies = GameObject.FindGameObjectsWithTag(enemyTag);
+		nearestEnemy = null;
 
 		//Finding and storing nearest enemy (and its distance)
 		foreach (GameObject enemy in enemies)
@@ -73,7 +90,13 @@ public class executionnerAttack : MonoBehaviour {
 
 	}
 
-	void Update () {
+	void Update() 
+	{
+		if (Input.GetButtonDown(keyForAttack))
+		{
+			ButtonPressAttack();
+		}
+
 		if (target == null)
 		{
 			if (useLaser)
@@ -81,7 +104,7 @@ public class executionnerAttack : MonoBehaviour {
 				if (lineRenderer.enabled)
 				{
 					lineRenderer.enabled = false;
-					impactEffect.Stop();
+					Destroy(impactEffect);
 					impactLight.enabled = false;
 				}
 			}
@@ -89,31 +112,24 @@ public class executionnerAttack : MonoBehaviour {
 			return;
 		}
 
-		LockOnTarget();
-
-		if (useLaser)
+		if (useLaser && buttonPressed)
 		{
 			Laser();
 		} 
 		else // if using bullets
 		{
-			if (fireCountdown <= 0f)
+			if (fireCountdown <= 0f && buttonPressed)
 			{
+				fireCountdown = fireRate;
 				Shoot();
-				fireCountdown = 1f / fireRate;
+				target = null;
 			}
 
-			fireCountdown -= Time.deltaTime;
+			if(usingFireRate)
+			{
+				fireCountdown -= Time.deltaTime;
+			}
 		}
-
-	}
-
-	void LockOnTarget ()
-	{
-		Vector3 dir = target.position - transform.position;
-		Quaternion lookRotation = Quaternion.LookRotation(dir);
-		Vector3 rotation = Quaternion.Lerp(partToRotate.rotation, lookRotation, Time.deltaTime * turnSpeed).eulerAngles;
-		partToRotate.rotation = Quaternion.Euler(0f, rotation.y, 0f);
 	}
 
 	void Laser ()
@@ -125,7 +141,7 @@ public class executionnerAttack : MonoBehaviour {
 		if (!lineRenderer.enabled)
 		{
 			lineRenderer.enabled = true;
-			impactEffect.Play();
+			GameObject impactEffect = (GameObject)Instantiate(bulletPrefab, targetEnemy.transform.position, this.transform.rotation);
 			impactLight.enabled = true;
 		}
 
@@ -139,13 +155,13 @@ public class executionnerAttack : MonoBehaviour {
 		impactEffect.transform.rotation = Quaternion.LookRotation(dir);
 	}
 
-	void Shoot ()
+	void Shoot()
 	{
 		GameObject bulletGO = (GameObject)Instantiate(bulletPrefab, firePoint.position, firePoint.rotation);
 		Bullet bullet = bulletGO.GetComponent<Bullet>();
 
 		if (bullet != null)
-			bullet.Seek(target);
+			bullet.Init(target, nearestEnemy);
 	}
 
 	void OnDrawGizmosSelected ()
